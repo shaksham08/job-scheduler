@@ -3,6 +3,7 @@ package mq
 import (
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/robfig/cron/v3"
 )
@@ -10,6 +11,14 @@ import (
 type Scheduler struct {
 	cr *cron.Cron
 }
+
+type ScheduledTaskEntry struct {
+	Task    *Task        `json:"task"`
+	EntryId cron.EntryID `json:"entry_id"`
+	NextRun time.Time    `json:"next_run"`
+}
+
+var scheduledTasksRegistry = make(map[string]*ScheduledTaskEntry)
 
 func NewScheduler() *Scheduler {
 	return &Scheduler{
@@ -26,19 +35,30 @@ func (s *Scheduler) Stop() {
 	s.cr.Stop()
 }
 
-func (s *Scheduler) ScheduleTask(task *Task, execute func(task *Task) error) (cron.EntryID, error) {
+func (s *Scheduler) ScheduleTask(task *Task, execute func(task *Task) error) error {
 	if task.Meta.CronExpr == "" {
-		return 0, errors.New("no cron expression provided")
+		return errors.New("no cron expression provided")
 	}
-
 	logger.Info("scheduling task", slog.String("task_id", task.Id), slog.String("cron_expr", task.Meta.CronExpr))
 
-	id, err := s.cr.AddFunc(task.Meta.CronExpr, func() {
+	entryID, err := s.cr.AddFunc(task.Meta.CronExpr, func() {
 		err := execute(task)
 		if err != nil {
 			logger.Error("Error executing task", slog.String("error:", err.Error()))
 		}
+		entryID := scheduledTasksRegistry[task.Id].EntryId
+		scheduledTasksRegistry[task.Id].NextRun = s.cr.Entry(entryID).Next
 	})
+	if err != nil {
+		return err
+	}
 
-	return id, err
+	// Initial registry update with the first scheduled run time
+	scheduledTasksRegistry[task.Id] = &ScheduledTaskEntry{
+		Task:    task,
+		NextRun: s.cr.Entry(entryID).Next,
+		EntryId: entryID,
+	}
+
+	return nil
 }

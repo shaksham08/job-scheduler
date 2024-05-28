@@ -88,7 +88,7 @@ func (s *Server) worker(mux *ServeMux, ctx context.Context) {
 
 			// handle cron tasks
 			if task.Meta.CronExpr != "" {
-				_, err := s.scheduler.ScheduleTask(task, handler)
+				err := s.scheduler.ScheduleTask(task, handler)
 				if err != nil {
 					logger.Error("Error scheduling task", slog.String("task_id:", task.Id))
 				}

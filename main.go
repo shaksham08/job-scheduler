@@ -5,6 +5,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"time"
 
 	mq "github.com/shaksham08/job-scheduler/mq"
 )
@@ -95,6 +96,21 @@ func main() {
 		logger.Info("Executing task, creating file...", slog.String("file_name:", t.FileName), slog.String("location:", t.Location))
 		return nil
 	})
+
+	go func() {
+		for {
+			logger.Info("Starting to fetch scheduled tasks...")
+			// fetch scheduled tasks
+			tasks, err := mq.GetAllScheduledTasks()
+			if err != nil {
+				logger.Error("Error fetching scheduled tasks", slog.String("error:", err.Error()))
+			}
+			for _, t := range tasks {
+				logger.Info("Task scheduled: ", slog.String("task_id:", t.Task.Id), slog.String("next_run:", t.NextRun.String()), slog.String("name:", t.Task.Name), slog.String("cron_expr:", t.Task.Meta.CronExpr))
+			}
+			time.Sleep(10 * time.Second)
+		}
+	}()
 
 	if err := server.Run(mux); err != nil {
 		log.Fatal(err)
