@@ -2,13 +2,13 @@ package mq
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"runtime"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/go-redis/redis"
 )
@@ -68,15 +68,29 @@ func (s *Server) worker(mux *ServeMux, ctx context.Context) {
 		default:
 			task, err := s.broker.Dequeue(s.queues...)
 			if err != nil {
+				time.Sleep(1 * time.Second) // Sleep to prevent tight loop on error
 				continue
 			}
 			if task == nil {
+				time.Sleep(1 * time.Second) // Sleep to prevent tight loop on nil task
 				continue
 			}
-			if f, ok := mux.mp[task.Name]; ok {
+			if f, ok := mux.mp[task.Name]; !ok {
+				logger.Error("No handler for task", slog.String("task_id:", task.Id))
+			} else {
 				if err := f(task); err != nil {
-					logger.Error(fmt.Sprintf("Error processing task: %s", task.Name), slog.String("error", err.Error()))
-					continue
+					// retry logic
+					logger.Info("Retrying task ", slog.String("task_id:", task.Id))
+					task.Meta.CurrentRetries++
+					if task.Meta.CurrentRetries > task.Meta.MaxRetries {
+						logger.Error("Max retries reached, dropping task ", slog.String("task_id:", task.Id))
+						continue
+					}
+					time.Sleep(RETRY_DELAY * time.Second)
+					err := s.broker.Enqueue(*task)
+					if err != nil {
+						logger.Error("Error re-enqueuing task", slog.String("task_id:", task.Id))
+					}
 				}
 			}
 		}

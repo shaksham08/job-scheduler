@@ -2,13 +2,19 @@ package mq
 
 import "github.com/google/uuid"
 
-type Task struct {
-	Id      string `json:"id"`
-	Name    string `json:"name"`
-	Payload []byte `json:"payload"`
+type TaskMeta struct {
+	Payload        []byte `json:"payload"`
+	MaxRetries     int    `json:"max_retries"`
+	CurrentRetries int    `json:"current_retries"`
 }
 
-func NewTask(name string, payload []byte) Task {
+type Task struct {
+	Id   string   `json:"id"`
+	Name string   `json:"name"`
+	Meta TaskMeta `json:"info"`
+}
+
+func NewTask(name string, meta TaskMeta) Task {
 	id := uuid.New().String()
-	return Task{Id: id, Name: name, Payload: payload}
+	return Task{Id: id, Name: name, Meta: meta}
 }
