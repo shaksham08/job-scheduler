@@ -11,6 +11,6 @@ func NewClient(r RedisConfig) *Client {
 	return &Client{broker: &RedisBroker{RedisConnection: *c.(*redis.Client)}}
 }
 
-func (c *Client) Enqueue(task Task) {
-	c.broker.Enqueue(task)
+func (c *Client) Enqueue(task Task) error {
+	return c.broker.Enqueue(task)
 }
