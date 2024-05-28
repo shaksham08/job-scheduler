@@ -6,6 +6,7 @@ type TaskMeta struct {
 	Payload        []byte `json:"payload"`
 	MaxRetries     int    `json:"max_retries"`
 	CurrentRetries int    `json:"current_retries"`
+	CronExpr       string `json:"cron_expr"`
 }
 
 type Task struct {

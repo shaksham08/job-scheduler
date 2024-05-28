@@ -18,6 +18,7 @@ type Server struct {
 	concurrency int
 	queues      []string
 	wg          sync.WaitGroup
+	scheduler   *Scheduler
 }
 
 type ServeMux struct {
@@ -30,7 +31,7 @@ func NewServer(r RedisConfig, n int) *Server {
 		n = runtime.NumCPU()
 	}
 
-	return &Server{broker: &RedisBroker{RedisConnection: *c.(*redis.Client)}, concurrency: n, queues: []string{DEFAULT_QUEUE}}
+	return &Server{broker: &RedisBroker{RedisConnection: *c.(*redis.Client)}, concurrency: n, queues: []string{DEFAULT_QUEUE, CRON_QUEUE}, scheduler: NewScheduler()}
 }
 
 func NewServeMux() *ServeMux {
@@ -43,6 +44,8 @@ func (sm *ServeMux) HandleFunc(name string, f func(*Task) error) {
 }
 
 func (s *Server) Run(mux *ServeMux) error {
+	s.scheduler.Start()
+	defer s.scheduler.Stop()
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	ctx := context.Background()
@@ -75,24 +78,39 @@ func (s *Server) worker(mux *ServeMux, ctx context.Context) {
 				time.Sleep(1 * time.Second) // Sleep to prevent tight loop on nil task
 				continue
 			}
-			if f, ok := mux.mp[task.Name]; !ok {
+
+			//  Check if task is in mux
+			handler, ok := mux.mp[task.Name]
+			if !ok {
 				logger.Error("No handler for task", slog.String("task_id:", task.Id))
-			} else {
-				if err := f(task); err != nil {
-					// retry logic
-					logger.Info("Retrying task ", slog.String("task_id:", task.Id))
-					task.Meta.CurrentRetries++
-					if task.Meta.CurrentRetries > task.Meta.MaxRetries {
-						logger.Error("Max retries reached, dropping task ", slog.String("task_id:", task.Id))
-						continue
-					}
-					time.Sleep(RETRY_DELAY * time.Second)
-					err := s.broker.Enqueue(*task)
-					if err != nil {
-						logger.Error("Error re-enqueuing task", slog.String("task_id:", task.Id))
-					}
+				continue
+			}
+
+			// handle cron tasks
+			if task.Meta.CronExpr != "" {
+				_, err := s.scheduler.ScheduleTask(task, handler)
+				if err != nil {
+					logger.Error("Error scheduling task", slog.String("task_id:", task.Id))
+				}
+				continue
+			}
+
+			// handle non-cron tasks
+			if err := handler(task); err != nil {
+				// retry logic
+				logger.Info("Retrying task ", slog.String("task_id:", task.Id))
+				task.Meta.CurrentRetries++
+				if task.Meta.CurrentRetries > task.Meta.MaxRetries {
+					logger.Error("Max retries reached, dropping task ", slog.String("task_id:", task.Id))
+					continue
+				}
+				time.Sleep(RETRY_DELAY * time.Second)
+				err := s.broker.Enqueue(*task)
+				if err != nil {
+					logger.Error("Error re-enqueuing task", slog.String("task_id:", task.Id))
 				}
 			}
+
 		}
 	}
 }

@@ -5,6 +5,7 @@ go 1.22.0
 require (
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/google/uuid v1.6.0
+	github.com/robfig/cron/v3 v3.0.1
 )
 
 require (

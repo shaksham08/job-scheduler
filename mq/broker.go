@@ -28,7 +28,12 @@ func (r *RedisBroker) Enqueue(task Task) error {
 		return err
 	}
 
-	cmd := r.RedisConnection.LPush(DEFAULT_QUEUE, taskBytes)
+	queue := DEFAULT_QUEUE
+	if task.Meta.CronExpr != "" {
+		queue = CRON_QUEUE
+	}
+
+	cmd := r.RedisConnection.LPush(queue, taskBytes)
 	if cmd.Err() != nil {
 		return cmd.Err()
 	}

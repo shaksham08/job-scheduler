@@ -57,6 +57,7 @@ func main() {
 		Payload:        payload,
 		MaxRetries:     3,
 		CurrentRetries: 0,
+		CronExpr:       "*/15 * * * * *",
 	}
 
 	task = mq.NewTask("create_file", task_meta)

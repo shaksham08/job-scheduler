@@ -1,4 +1,7 @@
 package mq
 
-const DEFAULT_QUEUE = "monkqueue"
-const RETRY_DELAY = 10
+const (
+	DEFAULT_QUEUE = "monkqueue"
+	CRON_QUEUE    = "monkcron"
+	RETRY_DELAY   = 10
+)
