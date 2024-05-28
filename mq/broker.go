@@ -2,9 +2,16 @@ package mq
 
 import (
 	"encoding/json"
+	"log/slog"
+	"os"
+	"time"
 
 	"github.com/go-redis/redis"
 )
+
+var logger *slog.Logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+	Level: slog.LevelDebug,
+}))
 
 type Broker interface {
 	Enqueue(task Task) error
@@ -29,8 +36,10 @@ func (r *RedisBroker) Enqueue(task Task) error {
 }
 
 func (r *RedisBroker) Dequeue(queues ...string) (*Task, error) {
-	cmd := r.RedisConnection.BRPop(0, queues...)
+	// BRPop is a blocking operation, so it will wait for a task to be enqueued, adding a timeout of 10 seconds
+	cmd := r.RedisConnection.BRPop(10*time.Second, queues...)
 	if cmd.Err() != nil {
+		logger.Error("Error in BRPop", slog.String("error:", cmd.Err().Error()))
 		return nil, cmd.Err()
 	}
 
